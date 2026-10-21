@@ -37,7 +37,7 @@ flowchart TD
     GUI --> API
 ```
 
-큐 워커는 현재 **7초 간격으로 한 항목씩** 처리하도록 설정되어 있습니다. 시리얼 명령 전송과 등급 카운트 증가는 워커의 handler에서 수행합니다.
+큐 워커는 **7초 간격으로 한 항목씩** 처리합니다(`config.QUEUE_POLL_INTERVAL`). 시리얼 명령 전송과 등급 카운트 증가는 워커의 handler에서 수행합니다.
 
 ## 당도 예측 모델
 
@@ -49,7 +49,7 @@ flowchart TD
 
 ### 모델 구조
 
-`brix_model/model2.py`의 `BrixRegression6CH_Deep`을 사용합니다.
+`brix_model/predictor.py`의 `BrixRegression6CH_Deep`을 사용합니다.
 
 - 4개 convolution block: 6 → 32 → 64 → 128 → 256채널
 - 각 block: Conv2d·BatchNorm·LeakyReLU·MaxPool·Dropout
@@ -79,8 +79,8 @@ flowchart TD
 
 ## 검사 실행 흐름
 
-1. **START**: 로컬 FastAPI 서버와 시리얼 포트를 열고, 큐 워커와 `detect_cap3.py`를 실행합니다.
-2. **검출·추론**: 과일 crop을 저장하고 `predict_grade()`로 등급을 계산합니다.
+1. **START**: 로컬 FastAPI 서버와 시리얼 포트를 열고, 큐 워커와 `detect_fruit.py`를 실행합니다.
+2. **검출·추론**: 과일 crop을 저장하고 `predict_brix()`로 당도를 추론한 뒤 `brix_to_grade()`로 등급을 계산합니다.
 3. **결과 전달**: 검출 프로세스가 출력한 `GRADE:<등급>:<이미지 경로>`를 제어 프로세스가 읽어 큐에 넣습니다.
 4. **선별 명령**: 워커가 등급 문자를 Arduino에 전달하고 등급별 개수를 집계합니다.
 5. **END**: 검출과 워커를 종료하고 집계를 FastAPI에 전달합니다. 이후 컨베이어 정지 명령, 카운트 초기화, 시리얼 종료와 캡처 이미지 정리를 수행합니다.
@@ -101,79 +101,121 @@ START/END 시 컨베이어에 보내는 문자는 각각 `1`과 `0`입니다. �
 
 | 경로 | 역할 |
 |---|---|
-| `brix_model/model2.py` | 6채널 CNN, 앙상블 로딩, 당도·등급 추론 |
-| `brix_model/model2_test.py` | 캡처 이미지 폴더를 순회하는 추론 실행 스크립트 |
-| `brix_model/*fold*.pth` | 당도 회귀 모델 가중치 |
-| `yolov5/detect_cap3.py` | 검출·추적·crop 저장·실제 등급 모델 호출 |
-| `yolov5/detect_cap4.py` | 수동 등급을 순환 출력하는 시연용 경로 |
-| `server/gui2.py` | 현재 제어 화면 진입점 |
-| `server/main_control_ver4.py` | 프로세스 실행·종료 및 이벤트 전달 |
-| `server/test_ver3.py` | 등급 큐 워커와 모터 명령 handler |
-| `server/pysignal.py` | 시리얼 연결과 명령 전송 |
+| `config.py` | 경로·장치·외부 서버 설정을 모은 단일 설정 모듈 |
+| `server/app.py` | **제어 화면 진입점** (START/END 버튼) |
+| `server/controller.py` | 검사 흐름 제어. 서브프로세스 실행·종료와 검출 이벤트 전달 |
+| `server/grade_queue.py` | 등급 큐와 선별 명령 워커 |
+| `server/serial_link.py` | 아두이노 시리얼 연결과 명령 전송 |
 | `server/result_store.py` | 등급별 개수 집계 |
-| `server/main3.py` | 검사 결과를 외부 Spring 서버에 전달하는 API |
+| `server/api.py` | 검사 결과를 외부 Spring 서버로 중계하는 로컬 FastAPI |
+| `server/_bootstrap.py` | `config.py`를 import할 수 있도록 `sys.path`를 잡아 주는 보조 모듈 |
+| `yolov5/detect_fruit.py` | 검출·추적·crop 저장·당도 모델 호출 |
+| `brix_model/predictor.py` | 6채널 CNN, 앙상블 로딩, 당도·등급 추론 |
+| `brix_model/predict_images.py` | 이미지 폴더를 순회하는 추론 실행 스크립트 |
+| `brix_model/*fold*.pth` | 당도 회귀 모델 가중치 |
 | `labels.csv` | 이미지 파일명과 Brix 라벨 |
 | `train_images/`, `test_images/` | 저장소에 포함된 이미지 폴더 |
+| `legacy/` | 실행 경로에서 쓰이지 않는 구버전·보조 코드 ([legacy/README.md](legacy/README.md)) |
 
-`detect_cap4.py`는 CNN의 실제 예측 결과를 출력하는 파일이 아닙니다. 현재 `gui2.py → main_control_ver4.py` 경로는 `detect_cap3.py`를 실행합니다.
+`yolov5/`의 나머지 파일은 업스트림 YOLOv5 코드이며 그대로 사용합니다.
+
+### 모듈 의존 관계
+
+```
+server/app.py
+  └─ server/controller.py
+       ├─ server/serial_link.py ─┐
+       ├─ server/result_store.py ┼─ config.py
+       ├─ server/grade_queue.py ─┘
+       ├─ server/api.py              (uvicorn 서브프로세스로 실행)
+       └─ yolov5/detect_fruit.py     (서브프로세스로 실행)
+            └─ brix_model/predictor.py
+```
+
+검출 스크립트는 별도 프로세스로 돌면서 표준출력에 `GRADE:<등급>:<경로>`를 찍고,
+`controller.py`의 리더 스레드가 그 줄을 읽어 등급 큐에 넣습니다. YOLO와 PyTorch
+초기화가 Tkinter 메인 루프를 멈추게 하므로 프로세스를 분리했습니다.
 
 ## 실행 준비
 
-현재 코드는 기존 Jetson 환경의 경로와 장치 설정을 사용합니다. 새 환경에서는 아래 항목을 먼저 맞춰야 합니다.
+경로는 `config.py`가 저장소 위치에서 계산하므로 따로 맞출 필요가 없습니다. 다만 아래 환경은 직접 준비해야 합니다.
 
 - Jetson/JetPack과 호환되는 PyTorch·torchvision 및 YOLOv5 의존성
 - GStreamer를 지원하는 OpenCV와 Jetson 카메라
 - Tkinter를 사용할 수 있는 디스플레이 환경
 - 연결된 Arduino와 해당 시리얼 포트 접근 권한
-- **별도로 준비한 검출 가중치 `yolov5/best.pt`**: 현재 저장소 파일 목록에는 포함되어 있지 않습니다.
+- **별도로 준비한 검출 가중치 `yolov5/best.pt`**: 저장소에 포함되어 있지 않습니다.
 - 외부 Spring 서버의 로그인·검사 API와 연동 계정
 
 ### 1. 저장소 준비
 
-제어 코드의 기본 프로젝트 경로는 `~/brixproject`입니다.
+경로는 `config.py`가 자기 위치에서 계산하므로 **아무 곳에나 clone해도 됩니다.**
 
 ```bash
-git clone https://github.com/Dongju-00/SugAI.git ~/brixproject
-cd ~/brixproject
+git clone https://github.com/Dongju-00/SugAI.git
+cd SugAI
 ```
 
-다른 경로를 사용한다면 `server/main_control_ver4.py`, `brix_model/model2.py`, `brix_model/model2_test.py`, `yolov5/detect_cap3.py`에 설정된 경로를 함께 확인하세요.
+### 2. 설정
 
-### 2. 장치·서버 설정
+모든 설정은 [`config.py`](config.py) 한 곳에 모여 있고, 대부분 `SUGAI_` 환경변수로
+덮어쓸 수 있습니다. 소스를 고치지 않고 장비마다 다른 값을 줄 수 있습니다.
 
-| 파일 | 확인할 설정 |
-|---|---|
-| `server/main_control_ver4.py` | 검출 스크립트·가중치·캡처 경로, 카메라 `SOURCE`, 시리얼 포트, `FRUIT_TYPE_ID` |
-| `brix_model/model2.py` | `_DEFAULT_GLOB`: 앙상블 가중치 경로 |
-| `server/main3.py` | `SPRING_LOGIN_URL`, `SPRING_INSPECTION_URL`, 연동 계정 설정 |
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `SUGAI_SERIAL_PORT` | `/dev/ttyACM0` | 아두이노 시리얼 포트 |
+| `SUGAI_CAMERA_SOURCE` | Jetson CSI 파이프라인 | GStreamer 파이프라인, 카메라 번호, 영상 경로 |
+| `SUGAI_DETECT_WEIGHTS` | `yolov5/best.pt` | 검출 가중치 경로 |
+| `SUGAI_CAPTURES_DIR` | `<저장소>/captures` | crop 이미지 저장 폴더 |
+| `SUGAI_DETECT_VIEW_IMG` | `1` | 디스플레이가 없으면 `0` |
+| `SUGAI_DETECT_HALF` | `1` | GPU가 없으면 `0` |
+| `SUGAI_QUEUE_POLL_INTERVAL` | `7.0` | 등급 큐 처리 간격(초) |
+| `SUGAI_FRUIT_TYPE_ID` | `1` | Spring의 과일 종류 ID |
+| `SUGAI_SPRING_BASE_URL` | `http://13.125.20.176:8080` | 외부 Spring 서버 |
+| `SUGAI_SPRING_USERNAME` / `SUGAI_SPRING_PASSWORD` | `test1` / `1234` | 연동 계정 |
 
-현재 외부 서버 주소와 계정 설정은 코드의 상수입니다. 환경변수 기반 설정 분리는 후속 개선 항목입니다.
+```bash
+export SUGAI_SERIAL_PORT=/dev/ttyUSB0
+export SUGAI_SPRING_PASSWORD='...'
+```
+
+연동 계정의 기본값은 코드에 남아 있는 개발용 값입니다. **운영 환경에서는 반드시
+환경변수로 덮어쓰세요.**
 
 ### 3. 제어 화면 실행
 
 ```bash
-cd ~/brixproject/server
-python gui2.py
+cd server
+python app.py
 ```
 
-제어 화면에서 START/END로 검사 흐름을 실행합니다. 현재 종료 동작은 캡처 이미지를 정리하므로, 분석용 이미지는 END 전에 별도로 보관해야 합니다.
+제어 화면에서 START/END로 검사 흐름을 실행합니다. 종료 동작이 캡처 이미지를 정리하므로,
+분석용 이미지는 END 전에 별도로 보관해야 합니다.
 
 ### 4. 당도 모델만 실행
 
-캡처 이미지가 준비된 상태에서 실행합니다.
-
 ```bash
-cd ~/brixproject/brix_model
-python model2_test.py
+cd brix_model
+python predict_images.py                 # config.CAPTURES_DIR 를 봅니다
+python predict_images.py ../test_images   # 폴더를 직접 지정
 ```
 
-이 스크립트는 `~/brixproject/captures`의 JPG 이미지를 읽습니다. 이는 이미지별 추론을 확인하는 실행 도구이며, MAE·RMSE를 계산하는 성능 평가기는 아닙니다.
+이미지별 추론을 확인하는 도구이며, MAE·RMSE를 계산하는 성능 평가기는 아닙니다.
+
+### 5. 검출만 확인
+
+당도 추론과 crop 저장 없이 검출·추적만 눈으로 보려면:
+
+```bash
+cd yolov5
+python detect_fruit.py --weights best.pt --source 0 --view-img --no-save
+```
 
 ## 검사 결과 API
 
 ### POST /send-inspection
 
-`server/main3.py`가 제공하는 로컬 API입니다.
+`server/api.py`가 제공하는 로컬 API입니다.
 
 ```json
 {
@@ -189,14 +231,22 @@ python model2_test.py
 
 API는 외부 Spring 로그인 응답의 `data.accessToken`을 읽고, Bearer 토큰으로 검사 결과를 전송합니다.
 
+전송이 실패해도 HTTP 200으로 응답하고 본문의 `ok` 필드로 성공 여부를 알립니다. 제어 코드가
+END 처리를 끝까지 진행할 수 있어야 하기 때문입니다.
+
+```json
+{ "ok": true, "message": "등급 정보 전송 성공", "server_response": { } }
+```
+
 ## 현재 한계와 개선 방향
 
 - **모델 평가**: MAE·RMSE·등급별 혼동행렬과 Jetson 추론 지연을 별도 측정해야 합니다. 현재 문서에는 검증되지 않은 성능 수치를 기재하지 않았습니다.
 - **추적 범위**: 중복 저장 억제는 SORT 추적 ID 기준입니다. 추적 ID가 바뀌면 동일 과일이 다시 저장될 수 있습니다.
 - **장치 처리**: 현재 시리얼 전송 실패 후에도 카운트가 증가할 수 있으므로, 실제 장치 응답에 따른 집계·재시도 정책이 필요합니다.
-- **종료·재시작**: 종료 시 대기 큐의 모든 항목 처리와 동일 프로세스에서의 워커 재시작은 별도 보완이 필요합니다.
+- **종료·재시작**: END 시 큐에 남은 항목은 처리되지 않고 버려지며, 같은 창에서 다시 START를 눌러도 큐 워커가 재시작되지 않습니다(스레드를 다시 시작할 수 없음). 다음 검사는 제어 화면을 다시 띄워서 시작해야 합니다.
 - **데이터 재현성**: 이미지·라벨 정합성과 과일 단위 학습/검증 분할, 학습 설정을 문서화해야 합니다.
-- **실행 환경**: 장치 경로·서버 설정 외부화와 의존성 버전 명세를 정리할 계획입니다.
+- **의존성 명세**: Jetson/JetPack에 맞는 PyTorch·torchvision·OpenCV 버전을 명시한 설치 문서가 필요합니다.
+- **계정 관리**: 연동 계정 기본값이 아직 코드에 남아 있습니다. `.env` 파일이나 비밀 관리 도구로 옮겨야 합니다.
 
 ## 오픈소스
 
