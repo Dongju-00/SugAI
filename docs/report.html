@@ -1,0 +1,649 @@
+<title>딸기 당도 모델 개선 기록</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@700&display=swap">
+
+<style>
+:root{
+  --ground:#f6f7f9; --surface:#ffffff; --surface-2:#eef0f4;
+  --ink:#14171c; --ink-2:#5b6573; --ink-3:#8b94a1;
+  --line:#dfe3e9; --line-2:#c9cfd8;
+  --accent:#b3233b; --accent-soft:#fdeef0;
+  --good:#1f6b4a; --good-soft:#e8f3ed;
+  --warn:#8a5d00; --warn-soft:#fbf2dd;
+  --rail:#eceff3;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#101317; --surface:#171b21; --surface-2:#1e232a;
+    --ink:#e9ebee; --ink-2:#9aa4b1; --ink-3:#707b89;
+    --line:#272d35; --line-2:#39414b;
+    --accent:#ff7089; --accent-soft:#2a1419;
+    --good:#54c593; --good-soft:#12241c;
+    --warn:#d9a441; --warn-soft:#241d0e;
+    --rail:#1a1f25;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101317; --surface:#171b21; --surface-2:#1e232a;
+  --ink:#e9ebee; --ink-2:#9aa4b1; --ink-3:#707b89;
+  --line:#272d35; --line-2:#39414b;
+  --accent:#ff7089; --accent-soft:#2a1419;
+  --good:#54c593; --good-soft:#12241c;
+  --warn:#d9a441; --warn-soft:#241d0e;
+  --rail:#1a1f25;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;
+  font-size:16px; line-height:1.72; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.shell{max-width:1180px;margin:0 auto;padding:0 24px 96px;display:grid;grid-template-columns:1fr;gap:0}
+@media(min-width:1040px){
+  .shell{grid-template-columns:200px minmax(0,1fr);gap:56px;padding-right:40px}
+}
+
+/* ---------- masthead ---------- */
+.masthead{grid-column:1/-1;padding:72px 0 40px;border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 20px
+}
+h1{
+  font-family:"Noto Serif KR",Georgia,serif;font-weight:700;
+  font-size:clamp(34px,5.4vw,56px);line-height:1.18;letter-spacing:-.015em;
+  margin:0 0 20px;text-wrap:balance;max-width:16ch
+}
+.standfirst{font-size:18px;line-height:1.68;color:var(--ink-2);max-width:60ch;margin:0 0 28px}
+.standfirst strong{color:var(--ink);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:12.5px;color:var(--ink-3)}
+.meta span{display:inline-flex;gap:7px;align-items:baseline}
+.meta b{font-weight:500;color:var(--ink-2)}
+
+/* ---------- readout ---------- */
+.readout{
+  grid-column:1/-1;margin:40px 0 8px;border:1px solid var(--line);
+  border-radius:3px;background:var(--surface);overflow:hidden
+}
+.readout-head{
+  padding:11px 18px;border-bottom:1px solid var(--line);background:var(--surface-2);
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-2)
+}
+.readout-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.cell{padding:20px 18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.cell:last-child{border-right:none}
+.cell-k{font-size:12px;color:var(--ink-3);margin:0 0 10px;letter-spacing:.01em}
+.cell-row{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.v-old{font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--ink-3);text-decoration:line-through;text-decoration-thickness:1px}
+.arrow{color:var(--ink-3);font-size:12px}
+.v-new{font-family:"IBM Plex Mono",monospace;font-size:21px;font-weight:500;color:var(--good);font-variant-numeric:tabular-nums}
+.v-new.bad{color:var(--accent)}
+.cell-note{font-size:11.5px;color:var(--ink-3);margin:7px 0 0}
+
+/* ---------- rail ---------- */
+.rail{display:none}
+@media(min-width:1040px){
+  .rail{
+    display:block;position:sticky;top:0;align-self:start;
+    padding:48px 0;max-height:100vh;overflow-y:auto
+  }
+  .rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  .rail a{
+    display:grid;grid-template-columns:24px 1fr;gap:6px;align-items:baseline;
+    padding:7px 10px;border-radius:3px;text-decoration:none;color:var(--ink-2);
+    font-size:13.5px;line-height:1.45;border-left:2px solid transparent
+  }
+  .rail a:hover{background:var(--rail);color:var(--ink)}
+  .rail a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .rail .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
+}
+
+/* ---------- article ---------- */
+article{padding:48px 0 0;min-width:0}
+section{margin:0 0 72px;scroll-margin-top:24px}
+.sec-head{display:flex;gap:16px;align-items:baseline;margin:0 0 26px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.sec-n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);padding-top:5px}
+h2{font-family:"Noto Serif KR",Georgia,serif;font-weight:700;font-size:27px;line-height:1.35;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:17px;font-weight:600;margin:38px 0 13px;line-height:1.5;color:var(--ink);text-wrap:balance}
+h3:first-of-type{margin-top:0}
+p{margin:0 0 17px;max-width:68ch}
+article a{color:var(--accent)}
+strong{font-weight:600}
+code{
+  font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--surface-2);
+  padding:2px 6px;border-radius:3px;color:var(--ink);white-space:nowrap
+}
+
+/* ---------- figures ---------- */
+figure{margin:30px 0;border:1px solid var(--line);border-radius:3px;background:var(--surface);overflow:hidden}
+figure img{display:block;width:100%;height:auto}
+figcaption{padding:13px 17px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-2);line-height:1.6;background:var(--surface-2)}
+figcaption b{color:var(--ink);font-weight:600}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin:22px 0;border:1px solid var(--line);border-radius:3px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:460px}
+th,td{padding:10px 15px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{
+  background:var(--surface-2);font-family:"IBM Plex Mono",monospace;font-weight:500;
+  font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);white-space:nowrap
+}
+tbody tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.pick td{background:var(--good-soft)}
+tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--good)}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:11px;padding:2px 7px;border-radius:2px;white-space:nowrap}
+.tag.no{background:var(--surface-2);color:var(--ink-2)}
+.tag.bad{background:var(--accent-soft);color:var(--accent)}
+.tag.ok{background:var(--good-soft);color:var(--good)}
+
+/* ---------- callouts ---------- */
+.note{
+  margin:26px 0;padding:17px 20px;border-left:3px solid var(--line-2);
+  background:var(--surface);border-radius:0 3px 3px 0;font-size:14.5px;line-height:1.68
+}
+.note p{margin:0 0 11px;max-width:none}
+.note p:last-child{margin:0}
+.note .lab{
+  display:block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;margin:0 0 9px;color:var(--ink-3)
+}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.warn .lab{color:var(--warn)}
+.note.key{border-left-color:var(--accent);background:var(--accent-soft)}
+.note.key .lab{color:var(--accent)}
+.note.good{border-left-color:var(--good);background:var(--good-soft)}
+.note.good .lab{color:var(--good)}
+
+pre{
+  margin:20px 0;padding:16px 18px;background:var(--surface);border:1px solid var(--line);
+  border-radius:3px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;
+  font-size:12.5px;line-height:1.72;color:var(--ink)
+}
+pre .c{color:var(--ink-3)}
+pre .hl{color:var(--accent)}
+
+ul{margin:0 0 17px;padding-left:20px;max-width:68ch}
+li{margin:0 0 9px}
+li::marker{color:var(--ink-3)}
+
+/* ---------- troubleshooting ---------- */
+.tsl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.ts{border:1px solid var(--line);border-radius:3px;background:var(--surface);overflow:hidden}
+.ts summary{
+  padding:14px 18px;cursor:pointer;display:grid;grid-template-columns:28px 1fr;gap:10px;
+  align-items:baseline;font-weight:600;font-size:15px;line-height:1.5;list-style:none
+}
+.ts summary::-webkit-details-marker{display:none}
+.ts summary::after{content:"+";font-family:"IBM Plex Mono",monospace;color:var(--ink-3);grid-column:3}
+.ts[open] summary::after{content:"−"}
+.ts summary{grid-template-columns:28px 1fr 16px}
+.ts summary:hover{background:var(--surface-2)}
+.ts summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ts .n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--accent);font-weight:400}
+.ts-body{padding:2px 18px 18px 56px;border-top:1px solid var(--line);font-size:14.5px}
+.ts-body p{max-width:none;margin:14px 0 0}
+.ts-body pre{margin:14px 0 0;font-size:12px}
+.ts-body .lesson{margin-top:14px;padding-top:13px;border-top:1px dashed var(--line);color:var(--ink);font-weight:500}
+@media(max-width:620px){.ts-body{padding-left:18px}}
+
+footer{
+  grid-column:1/-1;margin-top:40px;padding-top:26px;border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:8px 26px
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">SugAI · 당도 예측 모델</p>
+    <h1>모든 딸기가 S등급이었다</h1>
+    <p class="standfirst">
+      배포된 선별 파이프라인은 어떤 딸기를 넣어도 <strong>12.50 Brix</strong>를 뱉고 있었다.
+      등급을 매기는 게 아니라 상수를 출력하고 있었다는 뜻이다.
+      원인을 찾고, 학습 데이터를 다시 만들고, 다시 학습시킨 기록.
+    </p>
+    <div class="meta">
+      <span><b>측정일</b> 2026-10-22</span>
+      <span><b>데이터</b> 딸기 247장 · 라벨 3.2–14.2 Brix</span>
+      <span><b>평가</b> 5-fold 교차검증 2종</span>
+      <span><b>브랜치</b> <code>refactor/structure-and-training</code></span>
+    </div>
+  </header>
+
+  <div class="readout">
+    <div class="readout-head">학습 전 → 학습 후 · held-out 247장</div>
+    <div class="readout-grid">
+      <div class="cell">
+        <p class="cell-k">예측 Brix</p>
+        <div class="cell-row"><span class="v-old">12.50±0.00</span><span class="arrow">→</span><span class="v-new">7.34±1.20</span></div>
+        <p class="cell-note">상한에 붙어 있던 값이 움직이기 시작</p>
+      </div>
+      <div class="cell">
+        <p class="cell-k">MAE</p>
+        <div class="cell-row"><span class="v-old">5.183</span><span class="arrow">→</span><span class="v-new">1.154</span></div>
+        <p class="cell-note">기준선 1.864 대비 38% 개선</p>
+      </div>
+      <div class="cell">
+        <p class="cell-k">R²</p>
+        <div class="cell-row"><span class="v-old">−8.32</span><span class="arrow">→</span><span class="v-new">+0.332</span></div>
+        <p class="cell-note">처음 보는 촬영 조건 기준</p>
+      </div>
+      <div class="cell">
+        <p class="cell-k">등급 분포</p>
+        <div class="cell-row"><span class="v-old">S 247 / 0 / 0 / 0</span></div>
+        <div class="cell-row" style="margin-top:4px"><span class="v-new" style="font-size:15px">S23 A115 B106 C3</span></div>
+        <p class="cell-note">정상 분포로 복귀. 단 C는 여전히 희소</p>
+      </div>
+      <div class="cell">
+        <p class="cell-k">배치 내 판별력</p>
+        <div class="cell-row"><span class="v-new bad">r = 0.22</span></div>
+        <p class="cell-note">해결되지 않은 근본 한계</p>
+      </div>
+    </div>
+  </div>
+
+  <nav class="rail" aria-label="목차">
+    <ol>
+      <li><a href="#s1"><span class="n">01</span><span>문제</span></a></li>
+      <li><a href="#s2"><span class="n">02</span><span>시도</span></a></li>
+      <li><a href="#s3"><span class="n">03</span><span>결과</span></a></li>
+      <li><a href="#s4"><span class="n">04</span><span>선택과 근거</span></a></li>
+      <li><a href="#s5"><span class="n">05</span><span>앞으로의 과제</span></a></li>
+      <li><a href="#s6"><span class="n">06</span><span>트러블슈팅</span></a></li>
+      <li><a href="#s7"><span class="n">07</span><span>재현 방법</span></a></li>
+    </ol>
+  </nav>
+
+  <article>
+
+    <!-- ============ 1 ============ -->
+    <section id="s1">
+      <div class="sec-head"><span class="sec-n">01</span><h2>문제</h2></div>
+
+      <h3>배포 파이프라인이 상수를 출력하고 있었다</h3>
+      <p>
+        <code>detect_fruit.py</code>가 YOLO로 잘라 넘기는 crop을 기존 모델에 넣으면
+        247장 전부가 <strong>12.49±0.06 Brix</strong>, 클리핑 상한에 달라붙는다. 등급은 전부 S다.
+      </p>
+      <p>
+        기존 평가에서 이게 보이지 않았던 이유는, 평가를 <em>전체 사진</em>으로 했기 때문이다.
+        운영에서 실제로 들어오는 입력 형태로는 아무도 재보지 않았다.
+      </p>
+
+      <h3>원인 — 학습 이미지와 운영 입력의 형태가 다르다</h3>
+      <figure>
+        <img src="figures/1_area_fraction.png" alt="학습 이미지에서 딸기가 차지하는 면적 비율 히스토그램과, 128x128 입력 안에서의 딸기 픽셀 수 비교">
+        <figcaption><b>학습 이미지는 흰 종이 위에 딸기 한 알을 놓고 찍은 휴대폰 사진이다.</b> 딸기는 프레임의 평균 1.01%, 최대 2.8%만 차지한다. 128×128로 줄이면 약 13×13 픽셀이 된다. 운영 입력은 같은 128×128 안에서 딸기가 102×102 — 해상도가 62배 차이난다.</figcaption>
+      </figure>
+
+      <figure>
+        <img src="figures/2_saturation.png" alt="딸기 면적 비율을 1.5%에서 63%까지 늘려가며 측정한 기존 모델의 예측값 변화 곡선. 12.5에서 포화한다">
+        <figcaption>면적 비율을 바꿔가며 쓸어본 결과. 딸기를 크게 보여줄수록 예측이 <b>단조 증가하다가 12.5에서 포화</b>한다. 모델은 색이 아니라 상당 부분 <b>면적</b>을 학습했다 — 학습 데이터에서 면적비 vs 예측 r=+0.477로, 면적비 vs 실측 Brix(r=+0.366)보다 강하다.</figcaption>
+      </figure>
+
+      <h3>측정 수단 자체가 없었다</h3>
+      <ul>
+        <li><code>test_images/</code>는 <code>train_images/</code>의 <strong>바이트 단위 동일한 부분집합</strong>(061–073.jpg)이었다. held-out 검증셋이 아예 없었다.</li>
+        <li>당도 모델의 <strong>학습 코드가 저장소에 없었다.</strong> <code>git log --all</code>로 확인했고, <code>.pth</code> 5개는 외부에서 학습해 들어온 결과물이라 fold 분할·epoch·증강·손실 설정이 어디에도 기록되어 있지 않다.</li>
+      </ul>
+
+      <h3>Hue 표현이 빨강에서 끊긴다</h3>
+      <figure>
+        <img src="figures/7_hue.png" alt="딸기 과육 픽셀의 Hue 분포. 0 근처와 179 근처 양 끝에 몰려 있다">
+        <figcaption>OpenCV의 Hue는 0–179 <b>원형</b>이라 빨강이 양 끝에 걸친다. 딸기 과육 픽셀의 67%가 Hue≤15, 22%가 Hue≥165 — 같은 빨강인데 모델 입력 <code>H/179</code>에서는 <b>0.02와 1.00</b>으로 정반대 값이 된다.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ============ 2 ============ -->
+    <section id="s2">
+      <div class="sec-head"><span class="sec-n">02</span><h2>시도</h2></div>
+
+      <h3>없던 측정 기반부터 만들기</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>파일</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td><code>make_crops.py</code></td><td>원본 사진 → 딸기 박스 crop 데이터셋. HSV 빨강 마스크, 247/247 성공</td></tr>
+            <tr><td><code>dataset.py</code></td><td>전처리·증강·분할. 전처리는 여기 한 곳에만 둠</td></tr>
+            <tr><td><code>train.py</code></td><td>학습·조기종료·held-out 평가</td></tr>
+            <tr><td><code>crossval.py</code></td><td>k-fold 교차검증 (무작위 / 세션 그룹)</td></tr>
+            <tr><td><code>grades.py</code></td><td>등급 성능 분석·임계값 재보정</td></tr>
+            <tr><td><code>plots.py</code></td><td>결과 시각화</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note key">
+        <span class="lab">설계 원칙</span>
+        <p>전처리를 <code>dataset.py</code> 한 곳에 모으고 추론 코드가 같은 것을 쓰게 했다.
+        학습과 추론의 전처리가 갈라지는 것이 이 프로젝트가 망가진 바로 그 원인이었다.</p>
+      </div>
+
+      <h3>학습 방법</h3>
+      <pre>모델    BrixRegression6CH_Deep <span class="c">(기존과 동일, 파라미터 1,208,065개)</span>
+입력    딸기 crop → 128×128 → RGB 3채널 + HSV 3채널 = 6채널
+손실    Huber (SmoothL1, beta=1.0)
+최적화  Adam · lr 1e-3 · weight decay 1e-4 · CosineAnnealing
+배치    32
+예산    <span class="hl">40 epoch 고정 · 조기 종료 없음</span></pre>
+      <p>
+        <strong>조기 종료를 끈 것이 중요한 판단이었다.</strong> 처음에는 검증 MAE 기준 조기 종료를 썼는데
+        best epoch가 4–54로 들쭉날쭉했다. 검증셋이 48장뿐이라 “언제 멈출지” 자체가 운에 좌우됐고,
+        증강은 수렴이 느린데 짧은 patience가 먼저 끊어 구조적으로 불리했다.
+        실제로 기하 증강 순위가 조기 종료에서는 최하위, 고정 예산에서는 중위권으로 뒤집혔다.
+      </p>
+
+      <h3>두 가지 분할로 평가</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>분할</th><th>테스트 구성</th><th>재는 것</th></tr></thead>
+          <tbody>
+            <tr><td>무작위 5-fold</td><td>모든 세션이 섞임</td><td>같은 촬영 조건의 새 딸기</td></tr>
+            <tr class="pick"><td>세션 5-fold</td><td>한 촬영 회차를 통째로</td><td><strong>처음 보는 촬영 조건</strong>의 새 딸기</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        두 분할을 모두 쓴 이유는 이 데이터에서 <strong>촬영 세션이 당도와 엮여 있기</strong> 때문이다.
+        이미지 내용을 전혀 보지 않고 원본 해상도(=세션)만으로 Brix를 예측하면 MAE 1.095 / R² 0.408이 나온다.
+        무작위 분할만 쓰면 모델이 딸기가 아니라 촬영 조건을 외워도 점수가 나온다.
+      </p>
+      <p>두 분할 모두 <strong>247장 전부가 정확히 한 번씩</strong> 테스트된다. 누수 검증 완료.</p>
+    </section>
+
+    <!-- ============ 3 ============ -->
+    <section id="s3">
+      <div class="sec-head"><span class="sec-n">03</span><h2>결과</h2></div>
+
+      <h3>학습 전 / 후</h3>
+      <figure>
+        <img src="figures/3_before_after.png" alt="학습 전후 예측-실측 산점도 비교. 왼쪽은 12.5에 완전히 평평한 직선, 오른쪽은 대각선을 따라 퍼진 분포">
+        <figcaption>왼쪽은 기존 모델에 운영 입력(crop)을 넣은 결과 — <b>완전히 평평한 직선</b>이다. 오른쪽은 crop으로 재학습한 모델의 세션 5-fold 예측. 포화가 사라지고 예측이 실제로 움직인다.</figcaption>
+      </figure>
+      <div class="note good">
+        <span class="lab">검정</span>
+        <p>모델 vs <strong>오라클 기준선</strong>(테스트 셋의 참 평균을 공짜로 아는, 실제로는 불가능한 상대):
+        MAE 차이 <span class="mono">−0.225</span>, 95% CI <span class="mono">[−0.344, −0.104]</span>.</p>
+        <p>그것조차 유의하게 이긴다. 사진에서 당도 신호를 <strong>실제로 읽고 있다</strong>는 뜻이다.</p>
+      </div>
+
+      <h3>촬영 조건을 외운 것이 아니다</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>분할</th><th class="num">MAE</th><th class="num">R²</th><th class="num">기준선</th><th class="num">기준선 대비</th></tr></thead>
+          <tbody>
+            <tr><td>무작위 5-fold</td><td class="num">1.150</td><td class="num">0.300</td><td class="num">1.375</td><td class="num">16.3%</td></tr>
+            <tr class="pick"><td>세션 5-fold</td><td class="num">1.154</td><td class="num">0.332</td><td class="num">1.864</td><td class="num">38.1%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        세션을 통째로 빼도 성능이 유지된다. 처음 세운 가설 — “모델이 종이·조명으로 세션을 알아보고
+        평균 당도를 외운다” — 은 <strong>틀렸다</strong>. 그랬다면 세션을 빼는 순간 무너졌어야 한다.
+      </p>
+
+      <h3>증강 비교</h3>
+      <figure>
+        <img src="figures/4_augmentation.png" alt="증강 조합별 MAE, R², 예측 표준편차를 무작위 5-fold와 세션 5-fold로 비교한 막대그래프">
+        <figcaption>무작위 분할(회색)에서는 조합 간 차이가 없다. 세션 분할(파랑)에서는 증강을 걸수록 나빠진다. 오른쪽 패널의 <b>예측 표준편차</b>를 보면 증강이 무거울수록 예측이 평균 쪽으로 움츠린다.</figcaption>
+      </figure>
+      <div class="tw">
+        <table>
+          <thead><tr><th>조합</th><th class="num">무작위 MAE / R²</th><th class="num">세션 MAE / R²</th><th class="num">R² 손실</th></tr></thead>
+          <tbody>
+            <tr class="pick"><td><strong>증강 없음</strong></td><td class="num">1.150 / 0.300</td><td class="num">1.154 / 0.332</td><td class="num">+0.032</td></tr>
+            <tr><td>기하 (뒤집기·회전)</td><td class="num">1.147 / 0.288</td><td class="num">1.289 / 0.114</td><td class="num">−0.174</td></tr>
+            <tr><td>색조·채도 (±6°/±20%)</td><td class="num">1.135 / 0.370</td><td class="num">1.299 / 0.070</td><td class="num">−0.300</td></tr>
+            <tr><td>기하+밝기 · Hue sin/cos</td><td class="num">1.137 / 0.310</td><td class="num">1.302 / 0.125</td><td class="num">−0.184</td></tr>
+            <tr><td>기하+밝기+색</td><td class="num">1.182 / 0.299</td><td class="num">1.492 / <strong>−0.134</strong></td><td class="num">−0.433</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>페어드 부트스트랩(동일 247장, 10,000회):</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>분할</th><th>판정</th></tr></thead>
+          <tbody>
+            <tr><td>무작위 5-fold</td><td><span class="tag no">5개 조합 전부 차이 없음</span> &nbsp;CI가 모두 0을 포함</td></tr>
+            <tr><td>세션 5-fold</td><td><span class="tag bad">증강 건 4개 모두 유의하게 나쁨</span> &nbsp;CI가 모두 0 초과</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <span class="lab">단서</span>
+        <p>“증강이 해롭다”고 단정할 수 없다. 40 epoch 고정 예산에서 증강을 걸면 수렴이 느려
+        <strong>과소적합</strong>한 것일 수 있다. 예측 표준편차가 그 증거다 —
+        증강 없음 <span class="mono">1.20</span> → 기하+밝기+색 <span class="mono">0.89</span> → Hue sin/cos <span class="mono">0.68</span>.
+        과적합을 막은 게 아니라 아직 못 배운 모양이다. <strong>긴 예산(100–150 epoch)에서의 재확인이 필요하다.</strong></p>
+      </div>
+      <p>학습과 무관한 독립 측정도 같은 방향을 가리킨다. 같은 딸기를 증강한 뒤 “색 통계 ↔ Brix” 상관이 얼마나 남는지 재면:</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>증강</th><th class="num">색조 신호 유지율</th><th class="num">채도</th><th class="num">명도</th></tr></thead>
+          <tbody>
+            <tr><td>기하</td><td class="num">99%</td><td class="num">98%</td><td class="num">99%</td></tr>
+            <tr><td>밝기 ±20%</td><td class="num">96%</td><td class="num">94%</td><td class="num">87%</td></tr>
+            <tr><td>색조±6° · 채도±20%</td><td class="num"><strong>41%</strong></td><td class="num">58%</td><td class="num">100%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        색조 증강이 만드는 <em>같은 딸기 안의</em> 색조 흔들림(±51.9)이
+        딸기 <em>사이의</em> 실제 차이(±37.98)보다 크다. 구분해야 할 것을 뭉개는 셈이다.
+        Hue 끊김 때문에 ±6°만 흔들어도 입력값이 0↔1로 점프하는 것이 원인이다.
+      </p>
+
+      <h3>등급 성능</h3>
+      <figure>
+        <img src="figures/6_grades.png" alt="현재 임계값과 보정 임계값의 등급 혼동행렬 비교">
+        <figcaption>현재 운영 임계값 <code>[5.56, 6.97, 9.23]</code>에서는 <b>등급 C가 거의 나오지 않는다.</b> 재학습 전 재현율 0%, 재학습 후에도 3%다. 예측 분포에 맞춰 임계값을 다시 잡으면 33%까지 오른다.</figcaption>
+      </figure>
+      <div class="tw">
+        <table>
+          <thead><tr><th>임계값</th><th class="num">등급 정확도</th><th class="num">S</th><th class="num">A</th><th class="num">B</th><th class="num">C</th></tr></thead>
+          <tbody>
+            <tr><td>현재 <span class="mono">[5.56, 6.97, 9.23]</span></td><td class="num">42.9%</td><td class="num">41%</td><td class="num">50%</td><td class="num">52%</td><td class="num"><strong>3%</strong></td></tr>
+            <tr class="pick"><td>보정 <span class="mono">[6.15, 6.85, 8.94]</span></td><td class="num">45.3%</td><td class="num">59%</td><td class="num">52%</td><td class="num">33%</td><td class="num"><strong>33%</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>재학습만으로는 C 문제가 풀리지 않는다.</strong> 임계값 보정이 함께 필요하다. 단 위 보정값은 테스트 셋에서 뽑아 낙관적이므로, 실제로는 학습/검증 예측으로 구해야 한다.</p>
+
+      <h3>가장 중요한 발견 — 신호는 배치 ‘간’에 있지 ‘내’에 없다</h3>
+      <figure>
+        <img src="figures/5_between_within.png" alt="전체 상관, 배치 간 상관, 배치 내 상관을 나란히 보여주는 세 개의 산점도">
+        <figcaption>왼쪽은 전체(r=+0.583), 가운데는 배치 평균끼리(r=+0.888), 오른쪽은 배치 평균을 제거한 뒤(r=+0.220). <b>배치의 수준은 잘 맞히지만 배치 안에서 딸기를 가르지 못한다.</b></figcaption>
+      </figure>
+      <div class="tw">
+        <table>
+          <thead><tr><th>구분</th><th class="num">상관 r</th><th>의미</th></tr></thead>
+          <tbody>
+            <tr><td>전체 247장</td><td class="num">+0.583</td><td>겉보기 성능</td></tr>
+            <tr><td>배치 ‘간’ (세션 평균 5점)</td><td class="num"><strong>+0.888</strong></td><td>배치의 전반적 당도 수준은 잘 맞힘</td></tr>
+            <tr><td>배치 ‘내’ (장수 가중 평균)</td><td class="num"><strong>+0.228</strong></td><td>같은 배치 안에서 거의 구분 못 함</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>세션별 R²는 <strong>다섯 개 모두 음수</strong>다(−0.012 ~ −0.794). 한 배치 안에서는 그 배치의 평균을 답하는 것보다 못하다.</p>
+      <p>
+        이것은 세션을 외운 것이 <em>아니다</em>. 세션을 통째로 뺐는데도 그 세션의 당도 수준을 맞혔으므로,
+        색에서 배치 수준의 숙도를 실제로 읽고 있다. 다만 개별 딸기를 가르는 힘이 약하다.
+      </p>
+      <div class="note key">
+        <span class="lab">제품 관점의 결론</span>
+        <p>선별기는 컨베이어에 올라오는 딸기를 한 알씩 등급 매기고, 그 딸기들은 보통 같은 배치다.
+        그 조건에서 실효 상관은 <strong>0.58이 아니라 0.22</strong>다.
+        겉보기 MAE·R²만 보면 이 한계가 보이지 않는다.</p>
+      </div>
+    </section>
+
+    <!-- ============ 4 ============ -->
+    <section id="s4">
+      <div class="sec-head"><span class="sec-n">04</span><h2>선택과 근거</h2></div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>선택</th><th>근거</th></tr></thead>
+          <tbody>
+            <tr class="pick"><td><strong>딸기 crop으로 학습</strong></td><td>운영 입력과 형태를 맞춤. 포화 해소의 직접 원인</td></tr>
+            <tr class="pick"><td><strong>증강 없음</strong></td><td>두 분할 어디서도 이득 없음. 세션 분할에서는 유의하게 해로움</td></tr>
+            <tr><td>HSV 6채널 유지</td><td>Hue sin/cos가 릿지 회귀에서는 이득(R² 0.236→0.346)이었으나 CNN에서는 유의하지 않음</td></tr>
+            <tr><td>40 epoch 고정</td><td>조기 종료는 검증 48장에서 운에 좌우되고 증강에 불리함</td></tr>
+            <tr><td>세션 5-fold를 주 지표로</td><td>무작위 분할은 세션 누수를 막지 못함</td></tr>
+            <tr><td>임계값 보정 필요</td><td>재학습만으로 등급 C 재현율이 3%에 그침</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 5 ============ -->
+    <section id="s5">
+      <div class="sec-head"><span class="sec-n">05</span><h2>앞으로의 과제</h2></div>
+
+      <h3>1순위 — 배치 내 판별력 (데이터 문제)</h3>
+      <p>
+        지금 신호는 거의 배치 간에만 있다(배치 내 r=0.22). 선별기는 같은 배치를 한 알씩 가르므로,
+        이것을 못 올리면 <strong>모델을 아무리 손봐도 제품이 동작하지 않는다.</strong>
+      </p>
+      <p>
+        필요한 것은 <strong>같은 날·같은 조명에서 당도가 서로 다른 딸기</strong>를 모아 찍은 데이터다.
+        현재 데이터는 배치마다 당도가 몰려 있어(세션별 평균 6.62–10.80) 이 능력을 학습시킬 수가 없다.
+      </p>
+
+      <h3>2순위 — 긴 예산에서 증강 재확인</h3>
+      <p>40 epoch에서는 증강이 과소적합한다. 100–150 epoch에서 다시 재야 “증강이 해로운가”에 답할 수 있다.</p>
+
+      <h3>3순위 — 임계값 보정을 학습/검증 기준으로</h3>
+      <p><code>grades.py</code>가 준비되어 있다. 현재 보고한 보정값은 테스트 셋에서 뽑아 낙관적이다.</p>
+
+      <h3>그 밖에</h3>
+      <ul>
+        <li><strong>모델 축소</strong> — 파라미터 1,208,065개 / 학습 이미지 149–186장. 이미지당 8,000 파라미터로 용량이 심하게 과하다.</li>
+        <li><strong>라벨 해상도</strong> — 247장에 고유 Brix 값이 61개뿐이고 정수에 몰려 있다.</li>
+        <li><strong>회귀 대신 4-클래스 분류</strong> — 어차피 필요한 건 S/A/B/C 네 칸이다. 분류로 가면 클래스 불균형을 손실 함수로 다룰 수 있고 C 문제를 직접 제어할 수 있다.</li>
+      </ul>
+
+      <div class="note">
+        <span class="lab">기대치</span>
+        <p>사진으로 당도를 맞히는 과제 자체가 어렵다. 색은 숙도와, 숙도는 당도와 연관되지만 둘 다 느슨하다.
+        측정된 상한이 r ≈ 0.58, MAE ≈ 1.15다. <strong>배치 내 MAE 1.0 아래</strong>를 현실적 목표로 잡는 것이 좋다.</p>
+      </div>
+    </section>
+
+    <!-- ============ 6 ============ -->
+    <section id="s6">
+      <div class="sec-head"><span class="sec-n">06</span><h2>트러블슈팅</h2></div>
+      <p>작업하면서 실제로 막혔거나, 하마터면 잘못된 결론을 낼 뻔한 지점들.</p>
+
+      <div class="tsl">
+
+        <details class="ts">
+          <summary><span class="n">01</span><span>계층 이름을 바꿨더니 가중치가 조용히 안 실림</span></summary>
+          <div class="ts-body">
+            <p>가독성을 위해 <code>self.fc</code>를 <code>self.head</code>로 바꿨다. 그런데 저장된 <code>.pth</code>의 키가 <code>fc.1.*</code>, <code>fc.4.*</code>였다. 기존 코드가 <code>load_state_dict(state, strict=False)</code>를 쓰고 있어 <strong>에러 없이 회귀 head만 무작위 초기값으로 로드</strong>될 상황이었다.</p>
+            <pre>missing, unexpected = model.load_state_dict(state, strict=False)
+<span class="hl">if missing or unexpected:
+    raise RuntimeError("가중치 구조가 모델과 다릅니다: ...")</span></pre>
+            <p class="lesson"><code>strict=False</code>는 “유연함”이 아니라 “조용한 실패”다.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">02</span><span>프로세스 경계에서 플래그 이름이 어긋남</span></summary>
+          <div class="ts-body">
+            <p><code>controller.py</code>가 <code>--save-crop-once</code>를 넘기는데, 리팩터링 중 검출 스크립트에서 그 플래그를 없앴다. 단위 테스트로는 안 잡히는 종류의 버그다.</p>
+            <pre>cmd = capture_popen_argv(controller.start_detect)
+opt = detect_fruit.parse_opt(cmd[2:])   <span class="c"># argparse가 거부하면 실패</span></pre>
+            <p class="lesson">제어 코드가 만드는 argv를 실제 대상 파서에 먹여보는 테스트를 추가했다.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">03</span><span>조기 종료가 증강을 체계적으로 불리하게 만듦</span></summary>
+          <div class="ts-body">
+            <p>1차 실험에서 기하 증강이 최하위였는데, best epoch가 <strong>4</strong>였다. patience 15라 19 epoch 만에 끝난 것이다. 증강은 매 epoch 데이터가 달라져 수렴이 느린데, 짧은 patience가 먼저 끊었다.</p>
+            <p>고정 예산으로 바꾸자 같은 조합이 중위권으로 올라왔다.</p>
+            <p class="lesson">“증강이 나쁘다”가 아니라 “내 실험 설계가 증강을 불리하게 만들었다”였다. 지표를 믿기 전에 학습 곡선과 best epoch를 보자.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">04</span><span>임계값 재보정에서 정답지까지 같이 움직임</span></summary>
+          <div class="ts-body">
+            <p><code>grades.py</code> 초안이 임계값을 바꿀 때 <strong>실측 등급까지 같이 바꾸고</strong> 있었다. 실측 분포가 <span class="mono">S32 A116 B66 C33</span> → <span class="mono">S48 A116 B15 C68</span>로 변해 비교가 성립하지 않았다.</p>
+            <pre>def grade_metrics(pred, true, thresholds, <span class="hl">true_thresholds=None</span>):
+    """true_thresholds는 정답지 정의. 재보정 시 고정해야 합니다."""</pre>
+            <p class="lesson">보정 대상과 정답지를 분리하지 않으면 개선처럼 보이는 숫자가 나온다.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">05</span><span>한 시드만 보고 결론을 낼 뻔함</span></summary>
+          <div class="ts-body">
+            <p>Hue sin/cos가 seed 0에서 MAE 0.997로 1위였다. seed 1에서는 1.115로 뒤집혔다. 시드 간 변동(0.084)이 조합 간 차이(0.179)와 맞먹는 수준이었다.</p>
+            <p class="lesson">그래서 k-fold로 옮겼다. 247장 전부가 한 번씩 테스트되므로 같은 계산량으로 훨씬 단단한 추정을 준다 — 시드를 늘리는 것보다 효율적이었다.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">06</span><span>전체 R²는 양수인데 fold별 R²가 전부 음수</span></summary>
+          <div class="ts-body">
+            <p>이것을 그냥 넘겼다면 “성능 R² 0.33”으로 보고하고 끝났을 것이다. 분해해 보니 배치 간 신호(r=0.888)와 배치 내 신호(r=0.228)가 완전히 달랐다.</p>
+            <p class="lesson">집계 지표가 양수라고 안심하면 안 된다. 그룹 구조가 있는 데이터에서는 그룹 간/내를 분리해 봐야 한다.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">07</span><span>백그라운드 실행 중 코드를 고쳐도 반영되지 않음</span></summary>
+          <div class="ts-body">
+            <p><code>train.py</code>에 예측값 저장을 추가했는데, 이미 돌고 있던 실험은 수정 전 모듈을 메모리에 올린 상태였다. 그대로 뒀으면 90분을 돌리고도 사후 분석을 못 할 뻔했다.</p>
+            <p class="lesson">3분 경과 시점이라 재시작했다. 긴 작업 중 코드를 고쳤다면 반영 여부부터 확인하자.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">08</span><span>셸 작업 디렉터리가 명령 사이에 유지됨</span></summary>
+          <div class="ts-body">
+            <p><code>cd brix_model</code> 후 다음 명령에서 <code>cat &gt; brix_model/dataset.py</code>를 실행해 파일이 생성되지 않았다. 장시간 실험을 <code>nohup</code>으로 띄울 때도 같은 이유로 실행 자체가 실패해 15분을 날렸다.</p>
+            <p class="lesson">백그라운드 작업은 절대 경로로 띄우고, 띄운 직후 로그를 확인하자.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- ============ 7 ============ -->
+    <section id="s7">
+      <div class="sec-head"><span class="sec-n">07</span><h2>재현 방법</h2></div>
+      <pre><span class="c"># 환경 (운영 코드는 Jetson Python 3.6 기준, 학습 실험은 로컬 Python 3.12)</span>
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install opencv-python-headless pandas torch matplotlib
+
+cd brix_model
+python make_crops.py                      <span class="c"># 딸기 crop 데이터셋 (data/crops/)</span>
+
+python train.py --tag myrun --epochs 40 --patience 0
+python crossval.py --split random         <span class="c"># 무작위 5-fold</span>
+<span class="hl">python crossval.py --split session        # 세션 5-fold (주 지표)</span>
+python experiments.py --seeds 0 1         <span class="c"># 증강 조합 비교</span>
+
+python grades.py ../data/runs/crossval_session.json   <span class="c"># 등급 분석·임계값 보정</span>
+python plots.py                                       <span class="c"># 그림 생성</span></pre>
+      <p><code>data/</code>는 <code>.gitignore</code> 대상이다. 다른 환경에서는 <code>make_crops.py</code>부터 다시 돌리면 된다.</p>
+    </section>
+
+  </article>
+
+  <footer>
+    <span>SugAI · 당도 예측 모델 개선 기록</span>
+    <span>측정 2026-10-22</span>
+    <span>held-out 247장 · 5-fold 교차검증 2종</span>
+  </footer>
+
+</div>
