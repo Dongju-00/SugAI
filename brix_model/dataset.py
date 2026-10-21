@@ -174,6 +174,63 @@ def stratified_split(df, ratios=(0.6, 0.2, 0.2), bins=8, seed=0):
     return [np.array(sorted(p)) for p in parts]
 
 
+def kfold_splits(df, k=5, val_ratio=0.2, bins=8, seed=0):
+    """Brix 구간을 맞춘 k-fold. 모든 이미지가 정확히 한 번씩 테스트가 됩니다.
+
+    `stratified_split`은 테스트 50장 한 벌만 보지만, k-fold는 247장 전부를 테스트로
+    쓰므로 추정이 훨씬 안정적입니다. 조합 간 작은 차이를 가리려면 이쪽이 맞습니다.
+
+    한계: 같은 촬영 세션의 이미지가 학습·테스트 양쪽에 들어갑니다. 세션이 당도와
+    연관되어 있으면(이 데이터가 그렇습니다) 모델이 딸기가 아니라 촬영 조건을 외워도
+    점수가 나옵니다. 그 지름길까지 막으려면 `session_kfold_splits`를 쓰세요.
+
+    Returns: ``[(train_idx, val_idx, test_idx), ...]`` 길이 k
+    """
+    rng = np.random.default_rng(seed)
+    q = pd.qcut(df.brix, bins, labels=False, duplicates="drop")
+
+    # 구간별로 고르게 섞어 fold에 분배해, 각 fold의 Brix 분포를 비슷하게 맞춥니다.
+    assigned = np.empty(len(df), dtype=int)
+    for b in np.unique(q):
+        idx = np.array(df.index[q == b])
+        rng.shuffle(idx)
+        assigned[idx] = np.arange(len(idx)) % k
+
+    splits = []
+    for f in range(k):
+        test = np.array(sorted(df.index[assigned == f]))
+        rest = np.array(sorted(df.index[assigned != f]))
+        shuffled = rest.copy()
+        rng.shuffle(shuffled)
+        n_val = int(round(len(shuffled) * val_ratio))
+        splits.append((np.array(sorted(shuffled[n_val:])),
+                       np.array(sorted(shuffled[:n_val])),
+                       test))
+    return splits
+
+
+def session_kfold_splits(df, val_ratio=0.2, seed=0):
+    """세션 하나를 통째로 테스트로 쓰는 k-fold (Leave-One-Session-Out).
+
+    "처음 보는 촬영 조건에서 얼마나 하는가"를 재는 가장 정직한 방식입니다.
+    세션마다 장수가 크게 다르므로(14~146장) fold별 테스트 크기가 고르지 않습니다.
+
+    Returns: ``[(train_idx, val_idx, test_idx, session_name), ...]``
+    """
+    rng = np.random.default_rng(seed)
+    sess = df.apply(session_of, axis=1)
+    splits = []
+    for name in sorted(sess.unique()):
+        test = np.array(sorted(df.index[sess == name]))
+        rest = np.array(df.index[sess != name])
+        rng.shuffle(rest)
+        n_val = int(round(len(rest) * val_ratio))
+        splits.append((np.array(sorted(rest[n_val:])),
+                       np.array(sorted(rest[:n_val])),
+                       test, name))
+    return splits
+
+
 def session_split(df, test_sessions, val_ratio=0.2, seed=0):
     """지정한 세션을 통째로 테스트로 빼냅니다.
 
