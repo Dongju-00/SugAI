@@ -131,6 +131,11 @@ def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
         "last_epoch": len(history),
         "baseline_test_mae": float(np.abs(tt - df.brix[train_idx].mean()).mean()),
         "seconds": time.time() - t0,
+        # 사후 분석(등급 임계값 재보정 등)을 위해 테스트 예측을 남깁니다.
+        "test_images": [str(v) for v in df.images[test_idx]],
+        "test_pred": [float(v) for v in tp],
+        "test_true": [float(v) for v in tt],
+        "train_brix_mean": float(df.brix[train_idx].mean()),
     }
     return model, result, history, (tp, tt)
 
