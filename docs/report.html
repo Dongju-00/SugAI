@@ -292,7 +292,7 @@ footer{
       <h3>측정 수단 자체가 없었다</h3>
       <ul>
         <li><code>test_images/</code>는 <code>train_images/</code>의 <strong>바이트 단위 동일한 부분집합</strong>(061–073.jpg)이었다. held-out 검증셋이 아예 없었다.</li>
-        <li>당도 모델의 <strong>학습 코드가 저장소에 없었다.</strong> <code>git log --all</code>로 확인했고, <code>.pth</code> 5개는 외부에서 학습해 들어온 결과물이라 fold 분할·epoch·증강·손실 설정이 어디에도 기록되어 있지 않다.</li>
+        <li><strong>학습 파이프라인이 저장소에 빠져 있었다.</strong> 모델을 학습시킨 흐름 자체는 이전부터 있었고 <code>.pth</code> 5개가 그 결과물이다. 다만 그 코드가 커밋된 적이 없어(<code>git log --all</code>로 확인) fold 분할·epoch·증강·손실 설정이 어디에도 남아 있지 않고, 재학습할 방법도 없었다.</li>
       </ul>
 
       <h3>Hue 표현이 빨강에서 끊긴다</h3>
@@ -306,7 +306,9 @@ footer{
     <section id="s2">
       <div class="sec-head"><span class="sec-n">02</span><h2>시도</h2></div>
 
-      <h3>없던 측정 기반부터 만들기</h3>
+      <h3>쓰던 학습 파이프라인을 저장소에 들이기</h3>
+      <p>저장소에 빠져 있던 것을 채워 넣는 작업이다. 모델 구조와 전처리는 기존 흐름을 그대로 따르되,
+      학습·평가 과정을 코드로 남겨 다시 돌릴 수 있게 했다.</p>
       <div class="tw">
         <table>
           <thead><tr><th>파일</th><th>역할</th></tr></thead>
