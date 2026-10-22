@@ -115,9 +115,13 @@ START/END 시 컨베이어에 보내는 문자는 각각 `1`과 `0`입니다. �
 | `brix_model/*fold*.pth` | 당도 회귀 모델 가중치 |
 | `labels.csv` | 이미지 파일명과 Brix 라벨 |
 | `train_images/`, `test_images/` | 저장소에 포함된 이미지 폴더 |
-| `legacy/` | 실행 경로에서 쓰이지 않는 구버전·보조 코드 ([legacy/README.md](legacy/README.md)) |
 
 `yolov5/`의 나머지 파일은 업스트림 YOLOv5 코드이며 그대로 사용합니다.
+
+실행 경로에서 쓰이지 않는 구버전 코드(`gui.py`, `main_control_ver2/ver3/forTest.py`,
+`detect_cap.py`, `detect_cap2.py`, `detect_cap4.py`, 구버전 추론 `model.py`,
+수동 점검 도구 `sub_motor_control.py`)는 저장소 밖으로 옮겼습니다.
+필요하면 `git log` 또는 커밋 `164b3f1` 이전 이력에서 찾을 수 있습니다.
 
 ### 모듈 의존 관계
 

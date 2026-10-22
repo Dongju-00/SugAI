@@ -22,7 +22,7 @@ import config  # noqa: E402
 
 #: 현재 운영 중인 임계값. (C|B 경계, B|A 경계, A|S 경계)
 CURRENT_THRESHOLDS = (5.56, 6.97, 9.23)
-#: 구버전 legacy/brix_model/model.py가 쓰던 값. 비교용.
+#: 구버전 추론 코드(model.py)가 쓰던 값. 비교용.
 LEGACY_THRESHOLDS = (6.05, 6.85, 7.75)
 
 GRADES = ("S", "A", "B", "C")
