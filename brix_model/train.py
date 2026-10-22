@@ -56,9 +56,24 @@ def evaluate(model, loader, device):
     return np.concatenate(preds), np.concatenate(trues)
 
 
+def pick_device(prefer=None):
+    """CUDA → MPS(Apple GPU) → CPU 순으로 고릅니다.
+
+    Jetson에서는 CUDA가, 맥에서는 MPS가 잡힙니다. MPS는 일부 연산이 CPU와 미세하게
+    다를 수 있으므로, 결과를 비교할 때는 같은 장치로 돌린 것끼리만 비교하세요.
+    """
+    if prefer:
+        return torch.device(prefer)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
     torch.manual_seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(getattr(args, "device", None))
 
     color_space = getattr(args, "color_space", "hsv")
 
@@ -71,7 +86,18 @@ def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
     val_loader = make(val_idx, (), False)
     test_loader = make(test_idx, (), False)
 
-    model = BrixRegression6CH_Deep(COLOR_SPACE_CHANNELS[color_space]).to(device)
+    model = BrixRegression6CH_Deep(COLOR_SPACE_CHANNELS[color_space])
+    init_from = getattr(args, "init_from", None)
+    if init_from:
+        # 기존 가중치에서 출발합니다(fine-tuning). 기존 .pth는 전체 사진으로 학습된
+        # 것이라 회귀 head는 쓸모가 없을 수 있지만, 초기 conv의 색·질감 필터는
+        # 전이될 여지가 있습니다. 학습 이미지가 149장뿐이라 시도할 값어치가 있습니다.
+        state = torch.load(init_from, map_location="cpu", weights_only=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if verbose:
+            print("  fine-tuning 시작점: {} (누락 {}, 불필요 {})".format(
+                Path(init_from).name, len(missing), len(unexpected)))
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     # 라벨에 이상치가 섞여 있어도 덜 흔들리도록 Huber를 씁니다.
@@ -122,6 +148,8 @@ def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
         "tag": args.tag,
         "augments": list(args.augments),
         "color_space": color_space,
+        "init_from": init_from,
+        "device": str(device),
         "split": args.split,
         "n_train": len(train_idx), "n_val": len(val_idx), "n_test": len(test_idx),
         "best_epoch": best["epoch"],
@@ -158,6 +186,9 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default=None, help="cuda / mps / cpu. 생략하면 자동")
+    p.add_argument("--init-from", default=None,
+                   help="기존 .pth에서 출발(fine-tuning). 생략하면 무작위 초기화")
     p.add_argument("--log-every", type=int, default=10)
     p.add_argument("--save-weights", action="store_true")
     args = p.parse_args()

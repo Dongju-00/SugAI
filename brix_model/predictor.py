@@ -62,7 +62,7 @@ class BrixRegression6CH_Deep(nn.Module):
     더 이상 불러올 수 없습니다.
     """
 
-    def __init__(self, in_channels=6):
+    def __init__(self, in_channels=6, width=1.0, blocks=4):
         super(BrixRegression6CH_Deep, self).__init__()
 
         def conv_block(in_ch, out_ch, p_drop):
@@ -78,26 +78,30 @@ class BrixRegression6CH_Deep(nn.Module):
             )
 
         # 깊어질수록 dropout을 키웁니다.
-        self.layer1 = conv_block(in_channels, 32, 0.1)
-        self.layer2 = conv_block(32, 64, 0.2)
-        self.layer3 = conv_block(64, 128, 0.3)
-        self.layer4 = conv_block(128, 256, 0.4)
+        # width/blocks 기본값(1.0, 4)은 저장된 가중치와 같은 구조입니다. 바꾸면
+        # best_model(Regressor)_fold*.pth 를 더 이상 불러올 수 없습니다.
+        chans = [max(4, int(round(c * width))) for c in (32, 64, 128, 256)][:blocks]
+        drops = (0.1, 0.2, 0.3, 0.4)[:blocks]
+        prev = in_channels
+        for i, (ch, dp) in enumerate(zip(chans, drops), start=1):
+            setattr(self, "layer{}".format(i), conv_block(prev, ch, dp))
+            prev = ch
+        self.n_blocks = blocks
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
+        hidden = max(16, int(round(128 * width)))
         # 이름을 바꾸면 저장된 가중치의 키(fc.1.*, fc.4.*)와 어긋나 로드되지 않습니다.
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(256, 128),
+            nn.Linear(prev, hidden),
             nn.LeakyReLU(inplace=True),
             nn.Dropout(0.3),
-            nn.Linear(128, 1),
+            nn.Linear(hidden, 1),
         )
 
     def forward(self, x):
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        for i in range(1, self.n_blocks + 1):
+            x = getattr(self, "layer{}".format(i))(x)
         x = self.global_pool(x)
         x = self.fc(x)
         return x.squeeze(1)  # (N,)
