@@ -364,8 +364,72 @@ def fig_hue():
     _save(fig, "7_hue.png")
 
 
+# ===============================
+# 8) 모델 용량 vs 성능
+# ===============================
+def fig_capacity():
+    """용량을 줄이면 좋아질 것이라는 예상이 틀렸음을 보여줍니다.
+
+    파라미터 수가 303K와 305K로 거의 같은 두 설정이 있어 로그 축에서는 눈금이
+    겹칩니다. 그래서 6개 설정을 이산적인 막대로 그립니다.
+    """
+    na = json.load(open(RUNS / "crossval_session_cap.json"))
+    au = json.load(open(RUNS / "crossval_session_cap_aug.json"))
+    base_mae = na[0]["pooled"]["baseline_mae"]
+
+    rows = sorted(zip(na, au), key=lambda t: t[0].get("n_params") or 0)
+    names = ["{}\n{:,}".format(a["label"].split(" · ", 1)[-1].replace(" (현재)", ""),
+                               a.get("n_params") or 0) for a, _ in rows]
+    y = np.arange(len(rows))
+    h = 0.38
+
+    fig, ax = plt.subplots(1, 2, figsize=(12.5, 5.0), sharey=True)
+    for a, key, xlab, title in [(ax[0], "mae", "MAE (낮을수록 좋음)", "예측 오차"),
+                                (ax[1], "r2", "R² (높을수록 좋음)", "설명력")]:
+        v_na = [r[0]["pooled"][key] for r in rows]
+        v_au = [r[1]["pooled"][key] for r in rows]
+        a.barh(y - h / 2, v_na, h, color=C_NEW, label="증강 없음")
+        a.barh(y + h / 2, v_au, h, color=C_WARN, label="기하 + 밝기")
+        a.set_xlabel(xlab)
+        a.set_title(title, fontsize=11)
+        # R² 패널은 좌상단에 '축 밖' 라벨이 있어 범례를 좌하단으로 보냅니다.
+        a.legend(fontsize=9, loc="lower left" if key == "r2" else "lower right")
+    ax[0].set_yticks(y, names, fontsize=8.5)
+    ax[0].invert_yaxis()
+
+    ax[0].axvline(base_mae, color="k", ls="--", lw=1.4)
+    ax[0].text(base_mae, len(rows) - 0.35, " 기준선 {:.2f}".format(base_mae),
+               fontsize=8.5, va="center")
+    ax[1].axvline(0, color="k", ls="--", lw=1.4)
+
+    # 가장 작은 두 모델은 R²가 -2.4 ~ -4.6으로 붕괴해 축을 눌러버립니다.
+    # 핵심 구간(-0.2 ~ +0.3)이 보이도록 축을 자르고, 잘린 값은 숫자로 적습니다.
+    ax[1].set_xlim(-0.35, 0.33)
+    for i, (a_, b_) in enumerate(rows):
+        for val, off, col in [(a_["pooled"]["r2"], -h / 2, C_NEW),
+                              (b_["pooled"]["r2"], h / 2, C_WARN)]:
+            if val < -0.35:
+                # 막대가 왼쪽 끝까지 차 있으므로 흰 배경을 깔아 값이 묻히지 않게 합니다.
+                ax[1].text(-0.335, i + off, "◀ {:.2f}".format(val), fontsize=8,
+                           color=col, va="center", ha="left", zorder=5,
+                           bbox=dict(fc="white", ec="none", pad=1.2, alpha=0.92))
+    ax[1].text(0, len(rows) - 0.35, " 기준선 0", fontsize=8.5, va="center")
+
+    # 기준선을 유의하게 이긴 유일한 조합을 표시합니다.
+    top = len(rows) - 1
+    ax[1].annotate("기준선을 유의하게 이긴\n유일한 조합", xy=(rows[-1][0]["pooled"]["r2"], top - h / 2),
+                   xytext=(0.30, top - 1.5), fontsize=9, color=C_NEW, ha="right",
+                   arrowprops=dict(arrowstyle="->", color=C_NEW, lw=1.6,
+                                   connectionstyle="arc3,rad=-0.25"))
+
+    fig.suptitle("[결과 5] 용량을 줄이면 좋아질 것이라는 예상은 틀렸다\n"
+                 "11개 축소 조합 전부 현재 용량보다 유의하게 나쁨 (페어드 부트스트랩)",
+                 fontsize=12, y=1.02)
+    _save(fig, "8_capacity.png")
+
+
 FIGURES = {1: fig_area_fraction, 2: fig_saturation, 3: fig_before_after,
-           4: fig_augment, 5: fig_between_within, 6: fig_grades, 7: fig_hue}
+           4: fig_augment, 5: fig_between_within, 6: fig_grades, 7: fig_hue, 8: fig_capacity}
 
 
 def main():

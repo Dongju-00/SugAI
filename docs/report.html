@@ -486,6 +486,62 @@ footer{
       </div>
     </section>
 
+      <h3>용량을 줄이면 좋아질 것이라는 예상 — 틀렸다</h3>
+      <figure>
+        <img src="figures/8_capacity.png" alt="모델 용량 6단계를 증강 유무로 나눠 비교한 막대그래프. 축소 조합이 모두 기준선 근처로 주저앉는다">
+        <figcaption>용량 6종 × 증강 2종, 세션 5-fold · 60 epoch. <b>줄여서 좋아진 조합이 하나도 없다.</b> 기준선을 유의하게 이기는 것은 현재 용량(1.21M) 하나뿐이다.</figcaption>
+      </figure>
+      <p>
+        파라미터 1,208,065개 중 <strong>73.4%가 <code>layer4</code>(128→256) 한 블록</strong>에 있다.
+        학습 이미지가 149–186장이니 이미지당 6,495–8,108 파라미터 — 경험칙으로는 심하게 과한
+        용량이라 줄이면 좋아질 것으로 예상했다.
+      </p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>용량</th><th class="num">파라미터</th><th class="num">증강 없음 MAE / R²</th><th class="num">기하+밝기 MAE / R²</th></tr></thead>
+          <tbody>
+            <tr class="pick"><td><strong>32/64/128/256 (현재)</strong></td><td class="num">1,208,065</td><td class="num">1.201 / +0.248</td><td class="num">1.311 / +0.120</td></tr>
+            <tr><td>width 0.5</td><td class="num">303,233</td><td class="num">1.375 / −0.001</td><td class="num">1.433 / −0.145</td></tr>
+            <tr><td>blocks 3 (layer4 제거)</td><td class="num">305,409</td><td class="num">1.396 / −0.023</td><td class="num">1.314 / +0.079</td></tr>
+            <tr><td>width 0.5 + blocks 3</td><td class="num">77,185</td><td class="num">1.320 / −0.008</td><td class="num">1.338 / +0.027</td></tr>
+            <tr><td>width 0.25 + blocks 3</td><td class="num">19,713</td><td class="num">2.939 / −2.544</td><td class="num">2.914 / −2.399</td></tr>
+            <tr><td>width 0.25 + blocks 2</td><td class="num">5,185</td><td class="num">3.783 / −4.619</td><td class="num">3.786 / −4.388</td></tr>
+            <tr><td>기준선 (항상 평균)</td><td class="num">—</td><td class="num">1.864 / 0</td><td class="num">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note key">
+        <span class="lab">검정</span>
+        <p><strong>11개 축소 조합 전부 현재 용량보다 유의하게 나쁘다</strong> (모든 95% CI가 0 초과).
+        그리고 <strong>기준선을 유의하게 이기는 조합은 <span class="mono">1.21M · 증강 없음</span> 하나뿐</strong>
+        (<span class="mono">−0.178</span>, CI <span class="mono">[−0.273, −0.080]</span>).
+        나머지는 “테스트 셋 평균을 답하는 것”과 통계적으로 구분되지 않는다.</p>
+      </div>
+      <p>
+        줄이는 방식도 무관했다. 전 층을 좁히든(303K) 마지막 블록만 빼든(305K) 똑같이 무너진다.
+        그러면 150 epoch에서 나빠진 것은 과적합이 아니다 — 과적합이라면 용량을 줄였을 때
+        완화됐어야 한다. 현재 데이터로는 원인을 특정할 수 없고, 실용적으로는
+        <strong>40 epoch 부근이 최적</strong>이라는 사실만 쓰면 된다
+        (40ep R² 0.332 &gt; 60ep 0.248 &gt; 150ep 0.131).
+      </p>
+
+      <h3>모델 쪽 시도는 전부 막혔다</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>시도</th><th>결과</th></tr></thead>
+          <tbody>
+            <tr><td>증강 (6종 × 3개 설정)</td><td><span class="tag no">유의한 이득 없음</span></td></tr>
+            <tr><td>긴 예산 (150 epoch)</td><td><span class="tag bad">오히려 나빠짐</span></td></tr>
+            <tr><td>fine-tuning (기존 .pth에서 출발)</td><td><span class="tag no">도움 안 됨</span></td></tr>
+            <tr><td>용량 축소 (5단계 × 증강 2종)</td><td><span class="tag bad">11개 전부 유의하게 나빠짐</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        모델 쪽 손잡이를 다 돌려봤고 전부 막혔다. 남은 것은 처음부터 가리키고 있던 지점이다 —
+        <strong>배치 내 판별력 r = 0.22</strong>.
+      </p>
+
     <!-- ============ 4 ============ -->
     <section id="s4">
       <div class="sec-head"><span class="sec-n">04</span><h2>선택과 근거</h2></div>
@@ -518,15 +574,15 @@ footer{
         현재 데이터는 배치마다 당도가 몰려 있어(세션별 평균 6.62–10.80) 이 능력을 학습시킬 수가 없다.
       </p>
 
-      <h3>2순위 — 긴 예산에서 증강 재확인</h3>
-      <p>40 epoch에서는 증강이 과소적합한다. 100–150 epoch에서 다시 재야 “증강이 해로운가”에 답할 수 있다.</p>
-
-      <h3>3순위 — 임계값 보정을 학습/검증 기준으로</h3>
+      <h3>2순위 — 임계값 보정을 학습/검증 기준으로</h3>
       <p><code>grades.py</code>가 준비되어 있다. 현재 보고한 보정값은 테스트 셋에서 뽑아 낙관적이다.</p>
+
+      <h3>확인 완료 — 더 돌릴 필요 없는 것들</h3>
+      <p>긴 예산(150 epoch), fine-tuning, 모델 축소(5단계 × 증강 2종)는 모두 측정했고 도움이
+      되지 않는다. 모델 쪽 손잡이는 다 돌려봤다.</p>
 
       <h3>그 밖에</h3>
       <ul>
-        <li><strong>모델 축소</strong> — 파라미터 1,208,065개 / 학습 이미지 149–186장. 이미지당 8,000 파라미터로 용량이 심하게 과하다.</li>
         <li><strong>라벨 해상도</strong> — 247장에 고유 Brix 값이 61개뿐이고 정수에 몰려 있다.</li>
         <li><strong>회귀 대신 4-클래스 분류</strong> — 어차피 필요한 건 S/A/B/C 네 칸이다. 분류로 가면 클래스 불균형을 손실 함수로 다룰 수 있고 C 문제를 직접 제어할 수 있다.</li>
       </ul>
@@ -614,6 +670,19 @@ opt = detect_fruit.parse_opt(cmd[2:])   <span class="c"># argparse가 거부하�
           <div class="ts-body">
             <p><code>cd brix_model</code> 후 다음 명령에서 <code>cat &gt; brix_model/dataset.py</code>를 실행해 파일이 생성되지 않았다. 장시간 실험을 <code>nohup</code>으로 띄울 때도 같은 이유로 실행 자체가 실패해 15분을 날렸다.</p>
             <p class="lesson">백그라운드 작업은 절대 경로로 띄우고, 띄운 직후 로그를 확인하자.</p>
+          </div>
+        </details>
+
+        <details class="ts">
+          <summary><span class="n">09</span><span>경험칙으로 모델 용량을 판단하려 했다</span></summary>
+          <div class="ts-body">
+            <p>“학습 이미지 149장에 파라미터 120만 개 = 이미지당 8,000개”를 보고 과용량이라 단정했다.
+            150 epoch에서 성능이 떨어진 것도 과적합 증거로 읽었다.</p>
+            <p>측정해 보니 정반대였다. 용량을 1/4로 줄이면 R²가 0.248 → −0.001로 주저앉고,
+            1/60으로 줄이면 −4.6까지 무너진다. <strong>그 용량이 있어야 겨우 기준선을 넘는다.</strong></p>
+            <p class="lesson">파라미터/샘플 비율은 용량 적정성의 지표가 아니다. 재보기 전에는 모른다.
+            그리고 “150 epoch에서 나빠짐 = 과적합”도 성급했다 — 용량을 줄여도 완화되지 않았으니
+            다른 원인이다.</p>
           </div>
         </details>
 

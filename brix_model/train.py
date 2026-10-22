@@ -86,7 +86,9 @@ def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
     val_loader = make(val_idx, (), False)
     test_loader = make(test_idx, (), False)
 
-    model = BrixRegression6CH_Deep(COLOR_SPACE_CHANNELS[color_space])
+    model = BrixRegression6CH_Deep(COLOR_SPACE_CHANNELS[color_space],
+                                   width=getattr(args, "width", 1.0),
+                                   blocks=getattr(args, "blocks", 4))
     init_from = getattr(args, "init_from", None)
     if init_from:
         # 기존 가중치에서 출발합니다(fine-tuning). 기존 .pth는 전체 사진으로 학습된
@@ -149,6 +151,9 @@ def train_once(args, train_idx, val_idx, test_idx, df, verbose=True):
         "augments": list(args.augments),
         "color_space": color_space,
         "init_from": init_from,
+        "width": getattr(args, "width", 1.0),
+        "blocks": getattr(args, "blocks", 4),
+        "n_params": sum(q.numel() for q in model.parameters()),
         "device": str(device),
         "split": args.split,
         "n_train": len(train_idx), "n_val": len(val_idx), "n_test": len(test_idx),
@@ -189,6 +194,9 @@ def main():
     p.add_argument("--device", default=None, help="cuda / mps / cpu. 생략하면 자동")
     p.add_argument("--init-from", default=None,
                    help="기존 .pth에서 출발(fine-tuning). 생략하면 무작위 초기화")
+    p.add_argument("--width", type=float, default=1.0, help="채널 폭 배율 (용량 실험용)")
+    p.add_argument("--blocks", type=int, default=4, choices=[2, 3, 4],
+                   help="conv 블록 수. 3이면 layer4(전체 파라미터의 73%%)를 뺍니다")
     p.add_argument("--log-every", type=int, default=10)
     p.add_argument("--save-weights", action="store_true")
     args = p.parse_args()
